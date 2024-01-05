@@ -15,10 +15,10 @@ public class Main {
 
     public static void main(String[] args) throws IOException {
         long startTime = System.nanoTime();
-        String sourceFileName = args.length > 0 ? args[0] : "big_data.csv";
-        String destFileName = args.length > 1 ? args[1] : "big_result.txt";
+        String sourceFileName = args.length > 0 ? args[0] : "data.txt";
+        String destFileName = args.length > 1 ? args[1] : "result.txt";
 
-        List<Map<String, Set<Integer>>> columns = computeColumnMap(sourceFileName);
+        List<Map<String, List<Integer>>> columns = computeColumnMap(sourceFileName);
 
         System.out.println("COLUMNS " + columns.size());
 
@@ -40,19 +40,19 @@ public class Main {
         System.out.println("EXECUTION TIME: " + (endTime - startTime) / 1000000000 + "s");
     }
 
-    private static List<Map<String, Set<Integer>>> computeColumnMap(String fileName) throws IOException {
+    private static List<Map<String, List<Integer>>> computeColumnMap(String fileName) throws IOException {
         BufferedReader reader = new BufferedReader(new FileReader(fileName));
-        List<Map<String, Set<Integer>>> columns = new ArrayList<>();
+        List<Map<String, List<Integer>>> columns = new ArrayList<>();
 
         String line;
         String[] lineArr;
-        int lineIndex = 0;
+        Integer lineIndex = 0;
         while ((line = reader.readLine()) != null) {
             if (!LINE_PATTERN.matcher(line).matches() || EMPTY_LINE_PATTERN.matcher(line).matches()) {
                 continue;
             }
             LINES.add(line);
-            lineArr = line.split(LINE_SPLIT_REGEXP);
+            lineArr = line.split(";");
             if (lineArr.length > columns.size()) {
                 for (int i = columns.size(); i < lineArr.length; i++) {
                     columns.add(new HashMap<>());
@@ -62,7 +62,7 @@ public class Main {
                 if (lineArr[i].equals(EMPTY_STRING)) {
                     continue;
                 }
-                Set<Integer> wordSet = columns.get(i).getOrDefault(lineArr[i], new HashSet<>());
+                List<Integer> wordSet = columns.get(i).getOrDefault(lineArr[i], new ArrayList<>());
                 wordSet.add(lineIndex);
                 columns.get(i).put(lineArr[i], wordSet);
             }
@@ -72,7 +72,7 @@ public class Main {
         return columns;
     }
 
-    private static void computeUniqueLine(List<Map<String, Set<Integer>>> columns, Set<Integer> uniqueLines, Set<Integer> matchingLines) {
+    private static void computeUniqueLine(List<Map<String, List<Integer>>> columns, Set<Integer> uniqueLines, Set<Integer> matchingLines) {
         for (int i = 0; i < LINES.size(); i++) {
             String[] lineArr = LINES.get(i).split(LINE_SPLIT_REGEXP);
             boolean isUnique = true;
@@ -80,7 +80,7 @@ public class Main {
                 if (lineArr[j].equals(EMPTY_STRING)) {
                     continue;
                 }
-                Map<String, Set<Integer>> columnMap = columns.get(j);
+                Map<String, List<Integer>> columnMap = columns.get(j);
                 if (columnMap.get(lineArr[j]).size() > 1) {
                     isUnique = false;
                 }
@@ -93,7 +93,7 @@ public class Main {
         }
     }
 
-    private static List<List<Integer>> computedGroups(Set<Integer> matchingLines, List<Map<String, Set<Integer>>> columns) {
+    private static List<List<Integer>> computedGroups(Set<Integer> matchingLines, List<Map<String, List<Integer>>> columns) {
         List<List<Integer>> matchingGroups = new ArrayList<>();
         Set<Integer> visited = new HashSet<>();
         ArrayDeque<Integer> stack = new ArrayDeque<>();
@@ -110,7 +110,7 @@ public class Main {
                 group.add(line1Index);
                 String[] line1Arr = LINES.get(line1Index).split(LINE_SPLIT_REGEXP);
                 for (int i = 0; i < line1Arr.length; i++) {
-                    Set<Integer> matches = columns.get(i).get(line1Arr[i]);
+                    List<Integer> matches = columns.get(i).get(line1Arr[i]);
                     if (matches == null || matches.size() == 1) {
                         continue;
                     }

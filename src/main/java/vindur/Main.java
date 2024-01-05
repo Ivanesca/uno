@@ -6,24 +6,30 @@ import java.util.regex.Pattern;
 
 public class Main {
     private final static String EMPTY_STRING = "\"\"";
-    private final static String EMPTY_STRING_REGEXP = "(\"\";)*(\"\"){1}";
-    private final static String LINE_REGEXP = "(\"\\w*\";)*(\"\\w*\"){1}";
+    private final static String EMPTY_STRING_REGEXP = "(\"\";)*(\"\")";
+    private final static String LINE_REGEXP = "(\"[^\";]*\";)*(\"[^\";]*\")";
     private final static String LINE_SPLIT_REGEXP = ";";
     private final static Pattern EMPTY_LINE_PATTERN = Pattern.compile(EMPTY_STRING_REGEXP);
     private final static Pattern LINE_PATTERN = Pattern.compile(LINE_REGEXP);
+    private final static List<String> LINES = new ArrayList<>(1000_000);
 
     public static void main(String[] args) throws IOException {
         long startTime = System.nanoTime();
-        String sourceFileName = args.length > 0 ? args[0] : "data.txt";
-        String destFileName = args.length > 1 ? args[1] : "result.txt";
+        String sourceFileName = args.length > 0 ? args[0] : "big_data.csv";
+        String destFileName = args.length > 1 ? args[1] : "big_result.txt";
 
-        ArrayList<HashMap<String, Integer>> columns = computeColumnMap(sourceFileName);
+        List<Map<String, Set<Integer>>> columns = computeColumnMap(sourceFileName);
 
-        Set<String> uniqueLines = new HashSet<>();
-        Set<String[]> matchingLines = new HashSet<>();
-        computeUniqueLine(columns, uniqueLines, matchingLines, sourceFileName);
+        System.out.println("COLUMNS " + columns.size());
 
-        List<List<String[]>> groups = computedGroups(matchingLines, columns);
+        Set<Integer> uniqueLines = new HashSet<>();
+        Set<Integer> matchingLines = new HashSet<>();
+        computeUniqueLine(columns, uniqueLines, matchingLines);
+
+        System.out.println("UNIQUE " + uniqueLines.size());
+        System.out.println("MATCHING " + matchingLines.size());
+
+        List<List<Integer>> groups = computedGroups(matchingLines, columns);
 
         writeResult(uniqueLines, groups, destFileName);
 
@@ -31,19 +37,22 @@ public class Main {
         System.out.println("Число групп с 1 строкой: " + uniqueLines.size());
 
         long endTime = System.nanoTime();
-        System.out.println("EXECUTION TIME: " + (endTime - startTime) / 1000000 + "ms");
+        System.out.println("EXECUTION TIME: " + (endTime - startTime) / 1000000000 + "s");
     }
 
-    private static ArrayList<HashMap<String, Integer>> computeColumnMap(String fileName) throws IOException {
+    private static List<Map<String, Set<Integer>>> computeColumnMap(String fileName) throws IOException {
         BufferedReader reader = new BufferedReader(new FileReader(fileName));
-        ArrayList<HashMap<String, Integer>> columns = new ArrayList<>();
+        List<Map<String, Set<Integer>>> columns = new ArrayList<>();
 
         String line;
+        String[] lineArr;
+        int lineIndex = 0;
         while ((line = reader.readLine()) != null) {
             if (!LINE_PATTERN.matcher(line).matches() || EMPTY_LINE_PATTERN.matcher(line).matches()) {
                 continue;
             }
-            String[] lineArr = line.split(LINE_SPLIT_REGEXP);
+            LINES.add(line);
+            lineArr = line.split(LINE_SPLIT_REGEXP);
             if (lineArr.length > columns.size()) {
                 for (int i = columns.size(); i < lineArr.length; i++) {
                     columns.add(new HashMap<>());
@@ -53,68 +62,64 @@ public class Main {
                 if (lineArr[i].equals(EMPTY_STRING)) {
                     continue;
                 }
-                HashMap<String, Integer> columnMap = columns.get(i);
-                columnMap.put(lineArr[i], columnMap.getOrDefault(lineArr[i], 0) + 1);
+                Set<Integer> wordSet = columns.get(i).getOrDefault(lineArr[i], new HashSet<>());
+                wordSet.add(lineIndex);
+                columns.get(i).put(lineArr[i], wordSet);
             }
+            lineIndex++;
         }
         reader.close();
         return columns;
     }
 
-    private static void computeUniqueLine(ArrayList<HashMap<String, Integer>> columns, Set<String> uniqueLines, Set<String[]> matchingLines, String fileName) throws IOException {
-        String line;
-        BufferedReader reader = new BufferedReader(new FileReader(fileName));
-        while ((line = reader.readLine()) != null) {
-            if (!LINE_PATTERN.matcher(line).matches() || EMPTY_LINE_PATTERN.matcher(line).matches()) {
-                continue;
-            }
-            String[] lineArr = line.split(LINE_SPLIT_REGEXP);
+    private static void computeUniqueLine(List<Map<String, Set<Integer>>> columns, Set<Integer> uniqueLines, Set<Integer> matchingLines) {
+        for (int i = 0; i < LINES.size(); i++) {
+            String[] lineArr = LINES.get(i).split(LINE_SPLIT_REGEXP);
             boolean isUnique = true;
-            for (int i = 0; i < lineArr.length && isUnique; i++) {
-                if (lineArr[i].equals(EMPTY_STRING)) {
+            for (int j = 0; j < lineArr.length && isUnique; j++) {
+                if (lineArr[j].equals(EMPTY_STRING)) {
                     continue;
                 }
-                HashMap<String, Integer> columnMap = columns.get(i);
-                if (columnMap.get(lineArr[i]) > 1) {
+                Map<String, Set<Integer>> columnMap = columns.get(j);
+                if (columnMap.get(lineArr[j]).size() > 1) {
                     isUnique = false;
                 }
             }
             if (isUnique) {
-                uniqueLines.add(line);
+                uniqueLines.add(i);
             } else {
-                matchingLines.add(lineArr);
+                matchingLines.add(i);
             }
         }
-        reader.close();
     }
 
-    private static List<List<String[]>> computedGroups(Set<String[]> matchingLines, ArrayList<HashMap<String, Integer>> columns) {
-        List<List<String[]>> matchingGroups = new ArrayList<>();
-        Set<String[]> visited = new HashSet<>();
-        ArrayDeque<String[]> stack = new ArrayDeque<>();
+    private static List<List<Integer>> computedGroups(Set<Integer> matchingLines, List<Map<String, Set<Integer>>> columns) {
+        List<List<Integer>> matchingGroups = new ArrayList<>();
+        Set<Integer> visited = new HashSet<>();
+        ArrayDeque<Integer> stack = new ArrayDeque<>();
 
-        for (String[] matchingLine : matchingLines) {
+        for (Integer matchingLine : matchingLines) {
             if (visited.contains(matchingLine)) {
                 continue;
             }
-            List<String[]> group = new ArrayList<>();
+            List<Integer> group = new ArrayList<>();
             stack.push(matchingLine);
             visited.add(matchingLine);
             while (!stack.isEmpty()) {
-                String[] line1 = stack.pop();
-                group.add(line1);
-                for (int i = 0; i < line1.length; i++) {
-                    if (columns.get(i).getOrDefault(line1[i], 0) < 2) {
+                Integer line1Index = stack.pop();
+                group.add(line1Index);
+                String[] line1Arr = LINES.get(line1Index).split(LINE_SPLIT_REGEXP);
+                for (int i = 0; i < line1Arr.length; i++) {
+                    Set<Integer> matches = columns.get(i).get(line1Arr[i]);
+                    if (matches == null || matches.size() == 1) {
                         continue;
                     }
-                    for (String[] line2 : matchingLines) {
-                        if (Arrays.equals(line1, line2) || i >= line2.length || visited.contains(line2)) {
+                    for (Integer line2Index : matches) {
+                        if (line1Index.equals(line2Index) || visited.contains(line2Index)) {
                             continue;
                         }
-                        if (line1[i].equals(line2[i])) {
-                            stack.add(line2);
-                            visited.add(line2);
-                        }
+                        stack.add(line2Index);
+                        visited.add(line2Index);
                     }
                 }
             }
@@ -125,26 +130,26 @@ public class Main {
         return matchingGroups;
     }
 
-    private static void writeResult(Set<String> uniqueLines, List<List<String[]>> groups, String filename) throws IOException {
+    private static void writeResult(Set<Integer> uniqueLines, List<List<Integer>> groups, String filename) throws IOException {
         BufferedWriter writer = new BufferedWriter(new FileWriter(filename));
 
         writer.write("Число групп с более чем 1 строкой: " + groups.size());
         writer.newLine();
 
         int groupNumber = 1;
-        for (List<String[]> group : groups) {
+        for (List<Integer> group : groups) {
             writer.write("Группа " + groupNumber++);
             writer.newLine();
-            for (String[] strings : group) {
-                writer.write(String.join(LINE_SPLIT_REGEXP, strings));
+            for (Integer lineIndex : group) {
+                writer.write(LINES.get(lineIndex));
                 writer.newLine();
             }
         }
 
-        for (String uniqueLine : uniqueLines) {
+        for (Integer uniqueLineIndex : uniqueLines) {
             writer.write("Группа " + groupNumber++);
             writer.newLine();
-            writer.write(uniqueLine);
+            writer.write(LINES.get(uniqueLineIndex));
             writer.newLine();
         }
 

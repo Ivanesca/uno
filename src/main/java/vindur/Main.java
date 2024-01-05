@@ -7,28 +7,26 @@ import java.util.regex.Pattern;
 public class Main {
     private final static String EMPTY_STRING = "\"\"";
     private final static String EMPTY_STRING_REGEXP = "(\"\";)*(\"\")";
-    private final static String LINE_REGEXP = "(\"[^\";]*\";)*(\"[^\";]*\")";
+    private final static String LINE_REGEXP = "(;*\"[^\";]*\";*)+";
     private final static String LINE_SPLIT_REGEXP = ";";
     private final static Pattern EMPTY_LINE_PATTERN = Pattern.compile(EMPTY_STRING_REGEXP);
     private final static Pattern LINE_PATTERN = Pattern.compile(LINE_REGEXP);
-    private final static List<String> LINES = new ArrayList<>(1000_000);
+    private final static List<String> LINES = new ArrayList<>(10_000_000);
+    private static boolean[] visited;
 
     public static void main(String[] args) throws IOException {
         long startTime = System.nanoTime();
         String sourceFileName = args.length > 0 ? args[0] : "data.txt";
         String destFileName = args.length > 1 ? args[1] : "result.txt";
 
-        List<Map<String, List<Integer>>> columns = computeColumnMap(sourceFileName);
-
-        System.out.println("COLUMNS " + columns.size());
+        Set<String> lineSet = readFile(sourceFileName);
+        List<Map<String, List<Integer>>> columns = computeColumnMap(lineSet);
 
         Set<Integer> uniqueLines = new HashSet<>();
         Set<Integer> matchingLines = new HashSet<>();
         computeUniqueLine(columns, uniqueLines, matchingLines);
 
-        System.out.println("UNIQUE " + uniqueLines.size());
-        System.out.println("MATCHING " + matchingLines.size());
-
+        visited = new boolean[LINES.size()];
         List<List<Integer>> groups = computedGroups(matchingLines, columns);
 
         writeResult(uniqueLines, groups, destFileName);
@@ -40,26 +38,35 @@ public class Main {
         System.out.println("EXECUTION TIME: " + (endTime - startTime) / 1000000000 + "s");
     }
 
-    private static List<Map<String, List<Integer>>> computeColumnMap(String fileName) throws IOException {
+    private static Set<String> readFile(String fileName) throws IOException {
         BufferedReader reader = new BufferedReader(new FileReader(fileName));
-        List<Map<String, List<Integer>>> columns = new ArrayList<>();
-
+        Set<String> lineSet = new HashSet<>(1000_000);
         String line;
-        String[] lineArr;
-        Integer lineIndex = 0;
         while ((line = reader.readLine()) != null) {
             if (!LINE_PATTERN.matcher(line).matches() || EMPTY_LINE_PATTERN.matcher(line).matches()) {
                 continue;
             }
+            lineSet.add(line);
+        }
+        reader.close();
+        return lineSet;
+    }
+
+    private static List<Map<String, List<Integer>>> computeColumnMap(Set<String> lineSet) {
+        List<Map<String, List<Integer>>> columns = new ArrayList<>();
+
+        String[] lineArr;
+        Integer lineIndex = 0;
+        for (String line : lineSet) {
             LINES.add(line);
-            lineArr = line.split(";");
+            lineArr = line.split(LINE_SPLIT_REGEXP);
             if (lineArr.length > columns.size()) {
                 for (int i = columns.size(); i < lineArr.length; i++) {
                     columns.add(new HashMap<>());
                 }
             }
             for (int i = 0; i < lineArr.length; i++) {
-                if (lineArr[i].equals(EMPTY_STRING)) {
+                if (lineArr[i].length() == 0 || lineArr[i].equals(EMPTY_STRING)) {
                     continue;
                 }
                 List<Integer> wordSet = columns.get(i).getOrDefault(lineArr[i], new ArrayList<>());
@@ -68,7 +75,6 @@ public class Main {
             }
             lineIndex++;
         }
-        reader.close();
         return columns;
     }
 
@@ -77,7 +83,7 @@ public class Main {
             String[] lineArr = LINES.get(i).split(LINE_SPLIT_REGEXP);
             boolean isUnique = true;
             for (int j = 0; j < lineArr.length && isUnique; j++) {
-                if (lineArr[j].equals(EMPTY_STRING)) {
+                if (lineArr[j].length() == 0 || lineArr[j].equals(EMPTY_STRING)) {
                     continue;
                 }
                 Map<String, List<Integer>> columnMap = columns.get(j);
@@ -95,16 +101,15 @@ public class Main {
 
     private static List<List<Integer>> computedGroups(Set<Integer> matchingLines, List<Map<String, List<Integer>>> columns) {
         List<List<Integer>> matchingGroups = new ArrayList<>();
-        Set<Integer> visited = new HashSet<>();
         ArrayDeque<Integer> stack = new ArrayDeque<>();
 
         for (Integer matchingLine : matchingLines) {
-            if (visited.contains(matchingLine)) {
+            if (visited[matchingLine]) {
                 continue;
             }
             List<Integer> group = new ArrayList<>();
             stack.push(matchingLine);
-            visited.add(matchingLine);
+            visited[matchingLine] = true;
             while (!stack.isEmpty()) {
                 Integer line1Index = stack.pop();
                 group.add(line1Index);
@@ -115,11 +120,11 @@ public class Main {
                         continue;
                     }
                     for (Integer line2Index : matches) {
-                        if (line1Index.equals(line2Index) || visited.contains(line2Index)) {
+                        if (line1Index.equals(line2Index) || visited[line2Index]) {
                             continue;
                         }
                         stack.add(line2Index);
-                        visited.add(line2Index);
+                        visited[line2Index] = true;
                     }
                 }
             }
